@@ -1,0 +1,91 @@
+---
+title: "Quick Exploratory Analysis"
+author: "Forest Fang"
+date: "Sunday, June 15, 2014"
+output: html_document
+---
+
+```{r library, message=FALSE}
+library(dplyr)
+library(ggplot2)
+library(RColorBrewer)
+```
+
+### Data Summary
+See what data looks like:
+```{r data}
+trainingDF <- read.csv("data/train.csv")
+str(trainingDF)
+summary(trainingDF)
+```
+There are lots of missing Cabins and imputation would suffice to make up these data. On the other hand, only 2 are missed for Embarked, we can just ignore those two. We might want to impute Age if the variable proves to be interesting.
+
+#### Fare
+The zero fare is worrysome and let's take a boxplot just to make sure
+```{r fare-hist}
+boxplot(trainingDF$Fare, main = "Histogram of Fare")
+```
+
+The 500 outlier could be a problem. Let's see how many zeros we have:
+```{r zero-fare}
+sum(trainingDF$Fare == 0)
+```
+Not a lot. Free tickets? Let's see if they survived at all:
+```{r zero-fare-suvival}
+hist(trainingDF %>% filter(Fare == 0) %>% `$`("Survived") %>% as.integer,
+     main = "Survival for Zero Fares", xlab="")
+```
+
+Okay. Maybe I'll let the 500 ticket go but allow zeros to stay.
+
+#### Clean up
+We will filter out the max fare outlier and missing embarked.
+```{r filter}
+maxFare <- max(trainingDF$Fare)
+trainingDF <- filter(trainingDF, 
+                     Embarked != 0, 
+                     Fare < maxFare)
+```
+
+### Preliminary Correlation Analysis
+Firstly, let's examine raw correlation between each variable and survival:
+```{r corr}
+sapply(trainingDF, function(x){
+  format(cor(as.numeric(x), trainingDF$Survived, use = "complete.obs"), digits=2)
+})
+```
+We can make following observation:
+
+1. The PassengerId and Name have close to 0 correlation as expected. 
+2. With some surprise, Age doesn't seem have much impact. Neither do SibSp and Parch. 
+    * We might consider cutting Age into Young, Middle Aged and Old to see if the children and elderly are more likely to survive, but they could cancelled out when computing naive correlation.
+3. Ticket number has some interesting negative correlation and we might want to come back and see why this is. 
+4. Embarked correlation is not very meaningful because embarked clearly is not ordinal variable. We shall visit it again later.
+5. Otherwise, the most prominent factors seem to be Sex, Pclass, Fare.
+
+The correlation is calculated based on complete observation so missing values shouldn't be a big concern. Together with the information we observed in the summary, we should consider **Sex, PClass, Fare** for now, and keep **Age, Ticket and Embarked** in our back pocket.
+
+#### Age Study
+TODO: We want to slice age into buckets and see if young/old have better survival rate then middle aged.
+
+#### Ticket Study
+TODO: We want to give ticket a closer look on why it has some promising correlation.
+
+#### Embarked Study
+TODO: We want to study whether Embarked location has correlation with Survival but the variable is not ordinal. Furthermore, it's likely correlated to other variables like Fare, Pclass.
+
+### Pair-wise Scatter Plot
+Bottom Left is pair-wise scatterplot and top right is correlation. Color denotes survival (green for survived and red for deceased)
+```{r quick-plot}
+panel.pearson <- function(x, y, ...) {
+horizontal <- (par("usr")[1] + par("usr")[2]) / 2; 
+vertical <- (par("usr")[3] + par("usr")[4]) / 2; 
+text(horizontal, vertical, format(cor(x,y, use = "complete.obs"), digits=2))
+}
+
+colors <- paste0(brewer.pal(3, "Set1"), "4D")[c(1,3)]
+
+pairs(trainingDF[c("Sex", "Pclass", "Fare")], main = "Titanic Data", pch = 21, bg = colors[trainingDF$Survived + 1], upper.panel=panel.pearson)
+```
+
+The correlation is interesting and we might want to revisit when we start to consider covariance between variables.
